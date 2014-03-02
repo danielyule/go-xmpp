@@ -143,6 +143,17 @@ func (x *XMPP) RemoveFilter(id FilterId) error {
 	return id
 }
 
+func (x *XMPP) RemoveAllFilters() {
+	x.filterLock.Lock()
+	defer x.filterLock.Unlock()
+
+	for _, f := range x.filters {
+		close(f.ch)
+	}
+
+	x.filters = nil
+}
+
 // Matcher to identify a <iq id="..." type="result" /> stanza with the given
 // id.
 func IqResult(id string) Matcher {
@@ -175,6 +186,7 @@ func (x *XMPP) sender() {
 func (x *XMPP) receiver() {
 
 	defer close(x.In)
+	defer x.RemoveAllFilters()
 
 	for {
 		start, err := x.stream.Next()
@@ -215,5 +227,3 @@ func (x *XMPP) receiver() {
 		}
 	}
 }
-
-// BUG(matt): Filter channels are not closed when the stream is closed.
