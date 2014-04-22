@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-
+	"time"
 )
 
 // Config structure used to create a new XMPP client connection.
@@ -21,6 +21,9 @@ type ClientConfig struct {
 	// Skip verification of the server's certificate chain. Probably only
 	// useful during development.
 	InsecureSkipVerify bool
+
+	//Attempt in band registration if the server supports it
+	RegisterUser bool
 }
 
 // Create a client XMPP over the stream.
@@ -49,6 +52,10 @@ func NewClientXMPP(stream *Stream, jid JID, password string, config *ClientConfi
 				return nil, err
 			}
 			continue // Restart
+		}
+
+		if config.RegisterUser {
+			registerWithServer(stream, jid, password)
 		}
 
 		// Authentication
@@ -131,6 +138,127 @@ type tlsProceed struct {
 	XMLName xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-tls proceed"`
 }
 
+func registerWithServer(stream *Stream, jid JID, password string) error {
+
+	req := Iq{Id: UUID4(), Type: "get"}
+	req.PayloadEncode(registerIqRequest{Username: jid.Node, Password: password})
+	if err := stream.Send(req); err != nil {
+		return err
+	}
+	resp := Iq{}
+	err := stream.Decode(&resp, nil)
+	if err != nil {
+		return err
+	}
+	regResp := registerIqFields{}
+	resp.PayloadDecode(&regResp)
+	if regResp.Registered.Local != "" {
+		//We're already registered on this server
+		return nil
+	}
+
+	if regResp.Username.Local == "" ||   regResp.Password.Local == ""{
+		return fmt.Errorf("Server did not allow for specification of username and password")
+	}
+	req = Iq{Id: req.Id, Type: "set"}
+	registerReq := registerIqRequest{Username: jid.Node, Password: password}
+	fillInRegistraionResponse(regResp, &registerReq)
+	req.PayloadEncode(registerReq)
+	if err := stream.Send(req); err != nil {
+		return err
+	}
+	resp = Iq{}
+	err = stream.Decode(&resp, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func fillInRegistraionResponse(fields registerIqFields, response *registerIqRequest) {
+	is_empty := func(name xml.Name) bool {
+		return name.Local == ""
+	}
+
+	switch false {
+	case is_empty(fields.Address):
+		response.Address = "N/A"
+	case is_empty(fields.City):
+		response.City = "N/A"
+	case is_empty(fields.Date):
+		response.Date = time.Now().String()
+	case is_empty(fields.Email):
+		response.Email = "none@none"
+	case is_empty(fields.First):
+		response.First = "N/A"
+	case is_empty(fields.Key):
+		response.Key = "N/A"
+	case is_empty(fields.Last):
+		response.Last = "N/A"
+	case is_empty(fields.Misc):
+		response.Misc = "N/A"
+	case is_empty(fields.Nick):
+		response.Nick = "N/A"
+	case is_empty(fields.Name):
+		response.Name = "N/A"
+	case is_empty(fields.Phone):
+		response.Phone = "N/A"
+	case is_empty(fields.State):
+		response.State = "N/A"
+	case is_empty(fields.Text):
+		response.Text = "N/A"
+	case is_empty(fields.Url):
+		response.Text = "N/A"
+	case is_empty(fields.Zip):
+		response.Text = "N/A"
+
+	}
+
+}
+
+type registerIqFields struct {
+	XMLName  xml.Name `xml:"jabber:iq:register query"`
+	Username xml.Name `xml:"username,omitempty"`
+	Password xml.Name `xml:"password,omitempty"`
+	Nick     xml.Name `xml:"nick,omitempty"`
+	Name     xml.Name `xml:"name,omitempty"`
+	First    xml.Name `xml:"first,omitempty"`
+	Last     xml.Name `xml:"last,omitempty"`
+	Email    xml.Name `xml:"email,omitempty"`
+	Address  xml.Name `xml:"address,omitempty"`
+	City     xml.Name `xml:"city,omitempty"`
+	State    xml.Name `xml:"state,omitempty"`
+	Zip      xml.Name `xml:"zip,omitempty"`
+	Phone    xml.Name `xml:"phone,omitempty"`
+	Url      xml.Name `xml:"url,omitempty"`
+	Date     xml.Name `xml:"date,omitempty"`
+	Misc     xml.Name `xml:"misc,omitempty"`
+	Text     xml.Name `xml:"text,omitempty"`
+	Key      xml.Name `xml:"key,omitempty"`
+	Registered xml.Name `xml:"registered,omitempty"`
+}
+
+type registerIqRequest struct {
+	XMLName  xml.Name `xml:"jabber:iq:register query"`
+	Username string `xml:"username,omitempty"`
+	Password string `xml:"password,omitempty"`
+	Nick     string `xml:"nick,omitempty"`
+	Name     string `xml:"name,omitempty"`
+	First    string `xml:"first,omitempty"`
+	Last     string `xml:"last,omitempty"`
+	Email    string `xml:"email,omitempty"`
+	Address  string `xml:"address,omitempty"`
+	City     string `xml:"city,omitempty"`
+	State    string `xml:"state,omitempty"`
+	Zip      string `xml:"zip,omitempty"`
+	Phone    string `xml:"phone,omitempty"`
+	Url      string `xml:"url,omitempty"`
+	Date     string `xml:"date,omitempty"`
+	Misc     string `xml:"misc,omitempty"`
+	Text     string `xml:"text,omitempty"`
+	Key      string `xml:"key,omitempty"`
+}
+
 func authenticate(stream *Stream, mechanisms []string, user, password string) error {
 	for _, handler := range authHandlers {
 		if !stringSliceContains(mechanisms, handler.Mechanism) {
@@ -164,7 +292,6 @@ func authenticatePlain(stream *Stream, user, password string) error {
 	}
 	return authenticateResponse(stream)
 }
-
 
 func authenticateResponse(stream *Stream) error {
 	if se, err := stream.Next(); err != nil {
