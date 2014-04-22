@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 )
 
 // Config structure used to create a new XMPP client connection.
@@ -146,18 +147,19 @@ func registerWithServer(stream *Stream, jid JID, password string) error {
 	if err != nil {
 		return err
 	}
-	bindResp := registerIqFields{}
-	resp.PayloadDecode(&bindResp)
-	if bindResp.Registered.Local != "" {
+	regResp := registerIqFields{}
+	resp.PayloadDecode(&regResp)
+	if regResp.Registered.Local != "" {
 		//We're already registered on this server
 		return nil
 	}
 
-	if bindResp.Username.Local == "" ||   bindResp.Password.Local == ""{
+	if regResp.Username.Local == "" ||   regResp.Password.Local == ""{
 		return fmt.Errorf("Server did not allow for specification of username and password")
 	}
 	req = Iq{Id: req.Id, Type: "set"}
 	registerReq := registerIqRequest{Username: jid.Node, Password: password}
+	fillInRegistraionResponse(regResp, &registerReq)
 	req.PayloadEncode(registerReq)
 	if err := stream.Send(req); err != nil {
 		return err
@@ -168,6 +170,47 @@ func registerWithServer(stream *Stream, jid JID, password string) error {
 		return err
 	}
 	return nil
+}
+
+func fillInRegistraionResponse(fields registerIqFields, response *registerIqRequest) {
+	is_empty := func(name xml.Name) bool {
+		return name.Local == ""
+	}
+
+	switch false {
+	case is_empty(fields.Address):
+		response.Address = "N/A"
+	case is_empty(fields.City):
+		response.City = "N/A"
+	case is_empty(fields.Date):
+		response.Date = time.Now().String()
+	case is_empty(fields.Email):
+		response.Email = "none@none"
+	case is_empty(fields.First):
+		response.First = "N/A"
+	case is_empty(fields.Key):
+		response.Key = "N/A"
+	case is_empty(fields.Last):
+		response.Last = "N/A"
+	case is_empty(fields.Misc):
+		response.Misc = "N/A"
+	case is_empty(fields.Nick):
+		response.Nick = "N/A"
+	case is_empty(fields.Name):
+		response.Name = "N/A"
+	case is_empty(fields.Phone):
+		response.Phone = "N/A"
+	case is_empty(fields.State):
+		response.State = "N/A"
+	case is_empty(fields.Text):
+		response.Text = "N/A"
+	case is_empty(fields.Url):
+		response.Text = "N/A"
+	case is_empty(fields.Zip):
+		response.Text = "N/A"
+
+	}
+
 }
 
 type registerIqFields struct {
