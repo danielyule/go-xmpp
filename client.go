@@ -17,6 +17,9 @@ type ClientConfig struct {
 	// Skip verification of the server's certificate chain. Probably only
 	// useful during development.
 	InsecureSkipVerify bool
+
+	//Attempt in band registration if the server supports it
+	RegisterUser bool
 }
 
 // Create a client XMPP over the stream.
@@ -45,6 +48,10 @@ func NewClientXMPP(stream *Stream, jid JID, password string, config *ClientConfi
 				return nil, err
 			}
 			continue // Restart
+		}
+
+		if config.RegisterUser {
+			registerWithServer(stream, jid, password)
 		}
 
 		// Authentication
@@ -125,6 +132,85 @@ type tlsStart struct {
 
 type tlsProceed struct {
 	XMLName xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-tls proceed"`
+}
+
+func registerWithServer(stream *Stream, jid JID, password string) error {
+
+	req := Iq{Id: UUID4(), Type: "get"}
+	req.PayloadEncode(registerIqRequest{Username: jid.Node, Password: password})
+	if err := stream.Send(req); err != nil {
+		return err
+	}
+	resp := Iq{}
+	err := stream.Decode(&resp, nil)
+	if err != nil {
+		return err
+	}
+	bindResp := registerIqFields{}
+	resp.PayloadDecode(&bindResp)
+	if bindResp.Registered.Local != "" {
+		//We're already registered on this server
+		return nil
+	}
+
+	if bindResp.Username.Local == "" ||   bindResp.Password.Local == ""{
+		return fmt.Errorf("Server did not allow for specification of username and password")
+	}
+	req = Iq{Id: req.Id, Type: "set"}
+	registerReq := registerIqRequest{Username: jid.Node, Password: password}
+	req.PayloadEncode(registerReq)
+	if err := stream.Send(req); err != nil {
+		return err
+	}
+	resp = Iq{}
+	err = stream.Decode(&resp, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type registerIqFields struct {
+	XMLName  xml.Name `xml:"jabber:iq:register query"`
+	Username xml.Name `xml:"username,omitempty"`
+	Password xml.Name `xml:"password,omitempty"`
+	Nick     xml.Name `xml:"nick,omitempty"`
+	Name     xml.Name `xml:"name,omitempty"`
+	First    xml.Name `xml:"first,omitempty"`
+	Last     xml.Name `xml:"last,omitempty"`
+	Email    xml.Name `xml:"email,omitempty"`
+	Address  xml.Name `xml:"address,omitempty"`
+	City     xml.Name `xml:"city,omitempty"`
+	State    xml.Name `xml:"state,omitempty"`
+	Zip      xml.Name `xml:"zip,omitempty"`
+	Phone    xml.Name `xml:"phone,omitempty"`
+	Url      xml.Name `xml:"url,omitempty"`
+	Date     xml.Name `xml:"date,omitempty"`
+	Misc     xml.Name `xml:"misc,omitempty"`
+	Text     xml.Name `xml:"text,omitempty"`
+	Key      xml.Name `xml:"key,omitempty"`
+	Registered xml.Name `xml:"registered,omitempty"`
+}
+
+type registerIqRequest struct {
+	XMLName  xml.Name `xml:"jabber:iq:register query"`
+	Username string `xml:"username,omitempty"`
+	Password string `xml:"password,omitempty"`
+	Nick     string `xml:"nick,omitempty"`
+	Name     string `xml:"name,omitempty"`
+	First    string `xml:"first,omitempty"`
+	Last     string `xml:"last,omitempty"`
+	Email    string `xml:"email,omitempty"`
+	Address  string `xml:"address,omitempty"`
+	City     string `xml:"city,omitempty"`
+	State    string `xml:"state,omitempty"`
+	Zip      string `xml:"zip,omitempty"`
+	Phone    string `xml:"phone,omitempty"`
+	Url      string `xml:"url,omitempty"`
+	Date     string `xml:"date,omitempty"`
+	Misc     string `xml:"misc,omitempty"`
+	Text     string `xml:"text,omitempty"`
+	Key      string `xml:"key,omitempty"`
 }
 
 func authenticate(stream *Stream, mechanisms []string, user, password string) error {
