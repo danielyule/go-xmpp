@@ -3,9 +3,13 @@ package xmpp
 import (
 	"crypto/tls"
 	"encoding/xml"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"errors"
 	"fmt"
 	"log"
+
 )
 
 // Config structure used to create a new XMPP client connection.
@@ -147,6 +151,10 @@ type authHandler struct {
 
 var authHandlers = []authHandler{
 	{"PLAIN", authenticatePlain},
+	{"SCRAM-SHA-1", createScramFunction(sha1.New)},
+	{"SCRAM-SHA-256", createScramFunction(sha256.New)},
+	{"SCRAM-SHA-512", createScramFunction(sha512.New)},
+
 }
 
 func authenticatePlain(stream *Stream, user, password string) error {
@@ -156,6 +164,7 @@ func authenticatePlain(stream *Stream, user, password string) error {
 	}
 	return authenticateResponse(stream)
 }
+
 
 func authenticateResponse(stream *Stream) error {
 	if se, err := stream.Next(); err != nil {
@@ -183,6 +192,16 @@ func authenticateResponse(stream *Stream) error {
 type saslAuth struct {
 	XMLName   xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl auth"`
 	Mechanism string   `xml:"mechanism,attr"`
+	Text      string   `xml:",chardata"`
+}
+
+type saslChallenge struct {
+	XMLName   xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl challenge"`
+	Text      string   `xml:",chardata"`
+}
+
+type saslResponse struct {
+	XMLName   xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl response"`
 	Text      string   `xml:",chardata"`
 }
 
