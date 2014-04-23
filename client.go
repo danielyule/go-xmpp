@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-
 )
 
 // Config structure used to create a new XMPP client connection.
@@ -133,7 +132,7 @@ type tlsProceed struct {
 
 func authenticate(stream *Stream, mechanisms []string, user, password string) error {
 	for _, handler := range authHandlers {
-		if !stringSliceContains(mechanisms, handler.Mechanism) {
+		if !stringSliceContains(mechanisms, handler.Name) {
 			continue
 		}
 		if err := handler.Fn(stream, user, password); err == nil {
@@ -145,65 +144,17 @@ func authenticate(stream *Stream, mechanisms []string, user, password string) er
 }
 
 type authHandler struct {
-	Mechanism string
-	Fn        func(*Stream, string, string) error
+	Name string
+	Mechanism saslMechanism
 }
 
 var authHandlers = []authHandler{
-	{"PLAIN", authenticatePlain},
-	{"SCRAM-SHA-1", createScramFunction(sha1.New)},
-	{"SCRAM-SHA-256", createScramFunction(sha256.New)},
-	{"SCRAM-SHA-512", createScramFunction(sha512.New)},
-
+	{"PLAIN", &SaslPLAIN{}},
+	{"SCRAM-SHA-1",  &SaslCRAM {hash_func: sha1.New}},
+	{"SCRAM-SHA-256", &SaslCRAM {hash_func: sha256.New}},
+	{"SCRAM-SHA-512", &SaslCRAM {hash_func: sha512.New}},
 }
 
-func authenticatePlain(stream *Stream, user, password string) error {
-	auth := saslAuth{Mechanism: "PLAIN", Text: saslEncodePlain(user, password)}
-	if err := stream.Send(&auth); err != nil {
-		return err
-	}
-	return authenticateResponse(stream)
-}
-
-
-func authenticateResponse(stream *Stream) error {
-	if se, err := stream.Next(); err != nil {
-		return err
-	} else {
-		switch se.Name.Local {
-		case "success":
-			if err := stream.Skip(); err != nil {
-				return err
-			}
-			return nil
-		case "failure":
-			f := new(saslFailure)
-			if err := stream.Decode(f, se); err != nil {
-				return err
-			}
-			return fmt.Errorf("Authentication failed: %s", f.Reason.Local)
-		default:
-			return fmt.Errorf("Unexpected: %s", se.Name)
-		}
-	}
-	panic("unreachable")
-}
-
-type saslAuth struct {
-	XMLName   xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl auth"`
-	Mechanism string   `xml:"mechanism,attr"`
-	Text      string   `xml:",chardata"`
-}
-
-type saslChallenge struct {
-	XMLName   xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl challenge"`
-	Text      string   `xml:",chardata"`
-}
-
-type saslResponse struct {
-	XMLName   xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl response"`
-	Text      string   `xml:",chardata"`
-}
 
 func bindResource(stream *Stream, jid JID) (JID, error) {
 
