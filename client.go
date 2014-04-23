@@ -54,7 +54,8 @@ func NewClientXMPP(stream *Stream, jid JID, password string, config *ClientConfi
 			continue // Restart
 		}
 
-		if config.RegisterUser {
+		//Register user if they requested it and the server supports it
+		if config.RegisterUser && f.Register.Local == "register" {
 			registerWithServer(stream, jid, password)
 		}
 
@@ -348,6 +349,7 @@ type features struct {
 	Mechanisms *mechanisms  `xml:"mechanisms"`
 	Bind       *bind        `xml:"bind"`
 	Session    *session     `xml:"session"`
+	Register   xml.Name     `xml:"http://jabber.org/features/iq-register register,omitempty"`
 }
 
 type session struct {
