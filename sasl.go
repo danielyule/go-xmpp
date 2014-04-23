@@ -50,6 +50,9 @@ func saslAuthentication(stream *Stream, user, password string, handler authHandl
 				if err := stream.Decode(f, se); err != nil {
 					return err
 				}
+				if f.Text != "" {
+					return fmt.Errorf("Authentication failed: %s (%s)", f.Reason.Local, f.Text)
+				}
 				return fmt.Errorf("Authentication failed: %s", f.Reason.Local)
 			default:
 				return fmt.Errorf("Unexpected: %s", se.Name)

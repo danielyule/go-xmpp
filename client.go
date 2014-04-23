@@ -135,9 +135,12 @@ func authenticate(stream *Stream, mechanisms []string, user, password string) er
 		if !stringSliceContains(mechanisms, handler.Name) {
 			continue
 		}
-		if err := handler.Fn(stream, user, password); err == nil {
-			log.Printf("Authentication (%s) successful", handler.Mechanism)
+		if err := saslAuthentication(stream, user, password, handler); err == nil {
+			log.Printf("Authentication (%s) successful", handler.Name)
 			return nil
+		} else {
+			log.Printf("Authentication (%s) failed", handler.Name)
+			return err
 		}
 	}
 	return errors.New("No supported SASL mechanism found.")
@@ -244,6 +247,7 @@ type required struct{}
 
 type saslFailure struct {
 	XMLName xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl failure"`
+	Text    string `xml:"text,omitempty"`
 	Reason  xml.Name `xml:",any"`
 }
 
