@@ -265,8 +265,8 @@ func authenticate(stream *Stream, mechanisms []string, user, password string) er
 		if !stringSliceContains(mechanisms, handler.Name) {
 			continue
 		}
-		if err := handler.Fn(stream, user, password); err == nil {
-			log.Printf("Authentication (%s) successful", handler.Mechanism)
+		if err := saslAuthentication(stream, user, password, handler); err == nil {
+			log.Printf("Authentication (%s) successful", handler.Name)
 			return nil
 		}
 	}
